@@ -1,0 +1,20 @@
+# Output CSVs — generated at runtime, not tracked
+outputs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Claude Code internal
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
