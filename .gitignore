@@ -1,5 +1,6 @@
-# Output CSVs — generated at runtime, not tracked
+# Generated corpus data — not tracked (can be large)
 outputs/
+raw_transcripts/
 
 # Python
 __pycache__/
