@@ -1,17 +1,16 @@
 # ReverseEdtech
 
-A lightweight YouTube educational content extraction pipeline.  
-Search any topic, pull transcripts, export structured CSVs — no LLMs, no paid APIs, no UI.
+A quality-filtered YouTube educational corpus builder.  
+Search any topic, score each video for educational value, pull transcripts, save structured JSON — no LLMs, no paid APIs, no UI.
 
 ---
 
-## Scripts
+## How it works
 
-| Script | What it does |
-|---|---|
-| `youtube_search_extract.py` | Search YouTube for a query, export video metadata to CSV |
-| `transcript_extract_export.py` | Read metadata CSV, fetch transcripts, export timestamped rows |
-| `multi_search.py` | Full pipeline — decomposes any topic into multiple search angles, searches all of them, merges results, pulls transcripts |
+1. **Search** — yt-dlp fetches up to N YouTube results with full metadata (description, chapters, view count, duration)
+2. **Score** — each video is scored 0–95 across duration, chapters, educational keywords, and view count
+3. **Filter** — only videos above the threshold get transcripts fetched
+4. **Save** — one JSON file per accepted video + a running CSV index
 
 ---
 
@@ -19,101 +18,80 @@ Search any topic, pull transcripts, export structured CSVs — no LLMs, no paid 
 
 ```bash
 pip install -r requirements.txt
+
+python pipeline.py -q "Power BI tutorial"
+python pipeline.py -q "machine learning math" -n 30 --threshold 50
 ```
-
-### Option A — step by step
-
-```bash
-# 1. Search YouTube
-python youtube_search_extract.py -q "python for beginners" -n 10
-
-# 2. Pull transcripts
-python transcript_extract_export.py
-```
-
-### Option B — single command (recommended)
-
-```bash
-python multi_search.py -q "cyberpunk post renaissance neo noir film making"
-```
-
----
-
-## multi_search.py — how topic decomposition works
-
-Given a compound topic, the script splits it into focused sub-queries using a sliding-window heuristic over content words (stop words removed). No AI required.
-
-**Example**
-
-```
-Topic   : "cyberpunk post renaissance neo noir film making"
-
-Angle 1 : "cyberpunk post renaissance neo noir film making"  (full topic)
-Angle 2 : "cyberpunk post renaissance"                       (first 3 content words)
-Angle 3 : "renaissance neo noir"                             (middle 3)
-Angle 4 : "noir film making"                                 (last 3)
-```
-
-Each angle is searched independently on YouTube. Results are merged and deduplicated by `video_id` before transcript extraction.
-
----
-
-## Outputs
-
-Both CSVs are written to `outputs/` (gitignored).
-
-**`outputs/youtube_search_results.csv`**
-
-| Column | Description |
-|---|---|
-| `query` | Original topic entered |
-| `search_angle` | Sub-query used to find this video (`multi_search.py` only) |
-| `video_title` | Video title |
-| `channel` | Channel name |
-| `duration` | Duration string (e.g. `10:30`) |
-| `url` | Full YouTube URL |
-| `video_id` | YouTube video ID |
-| `thumbnail` | Highest-resolution thumbnail URL |
-
-**`outputs/video_transcripts.csv`**
-
-| Column | Description |
-|---|---|
-| `video_id` | YouTube video ID |
-| `video_title` | Video title |
-| `timestamp` | Segment start time (`HH:MM:SS`) |
-| `duration` | Segment duration in seconds |
-| `transcript_text` | Transcript text for this segment |
-| `video_url` | Full YouTube URL |
 
 ---
 
 ## CLI reference
 
-```bash
-# youtube_search_extract.py
-python youtube_search_extract.py                          # interactive prompt
-python youtube_search_extract.py -q "query" -n 15
-
-# transcript_extract_export.py
-python transcript_extract_export.py
-python transcript_extract_export.py --delay 2.0
-
-# multi_search.py
-python multi_search.py                                    # interactive prompt
-python multi_search.py -q "jazz theory improvisation"
-python multi_search.py -q "stoic philosophy" -n 10 --max-angles 5
-python multi_search.py -q "machine learning math" --skip-transcripts
-python multi_search.py -q "topic" --delay 2.0
 ```
+python pipeline.py -q "your topic"
+
+  -q / --query               Learning goal / search query (prompted if omitted)
+  -n / --num-results INT     Candidates to fetch from YouTube (default: 20)
+  --threshold INT            Min quality score to accept a video (default: 45 / 95)
+  --delay FLOAT              Seconds between transcript requests (default: 0.5)
+  --cookies-from-browser     Use browser session to bypass rate-limiting: chrome, edge, firefox
+```
+
+---
+
+## Outputs
+
+Both are gitignored (can be large).
+
+**`raw_transcripts/<video_id>.json`**
+
+```json
+{
+  "video_id": "...",
+  "metadata": { "title", "channel", "url", "duration_formatted", "view_count", "upload_date", ... },
+  "quality":  { "score", "threshold", "signals" },
+  "chapters": [ { "timestamp": "0:00", "title": "Introduction" }, ... ],
+  "transcript": [ { "segment_id": 1, "start": 12.5, "end": 16.2, "duration": 3.7, "text": "..." }, ... ]
+}
+```
+
+**`outputs/corpus_index.csv`**
+
+| Column | Description |
+|---|---|
+| `video_id` | YouTube video ID |
+| `title` | Video title |
+| `channel` | Channel name |
+| `duration` | Duration string |
+| `quality_score` | Score out of 95 |
+| `chapter_count` | Number of chapters extracted |
+| `transcript_segs` | Number of transcript segments |
+| `view_count` | YouTube view count |
+| `query` | Query used to find this video |
+| `json_path` | Path to the full JSON file |
+| `fetched_at` | ISO timestamp of extraction |
+
+---
+
+## Quality scoring
+
+| Signal | Max points |
+|---|---|
+| Duration (2–20 min scores highest) | 20 |
+| Chapter count and specificity | 30 |
+| Educational keywords in title | 25 |
+| View count | 15 |
+| Rich description (>200 chars) | 5 |
+| **Total** | **95** |
+
+Hard rejects (score = 0, no transcript fetched): duration under 2 min, YouTube Shorts, reaction/meme/vlog keywords in title.
 
 ---
 
 ## Stack
 
 - Python 3.11+
-- [youtube-search-python](https://github.com/alexmercerind/youtube-search-python)
-- [youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — search, metadata, subtitle download
 - pandas
 
 No LangChain. No OpenAI. No paid APIs. No UI. No database.
